@@ -22,6 +22,7 @@ A data analytics project comparing two of the world's fastest-growing fiction ge
 isekai-vs-cultivation-analysis/
 ├── scripts/
 │   ├── 02_scraper.py              # NovelUpdates web scraper (nodriver + BeautifulSoup)
+│   ├── mal_scraper.py             # MyAnimeList scraper (genre page scraping + MAL API v2)
 │   ├── 03_build_database.py       # Normalized SQLite database builder
 │   ├── export_tableau_csvs.py     # Exports clean CSVs for Tableau
 │   └── fix_cluster_chart_v2.py    # Cluster visualization fix script
@@ -40,14 +41,27 @@ isekai-vs-cultivation-analysis/
 
 | Dataset | Source | Method | Size |
 |---|---|---|---|
-| Cultivation Novels | [NovelUpdates](https://www.novelupdates.com) | Custom web scraper (nodriver) | ~3,800 novels |
-| Isekai / Martial Arts Anime | [MyAnimeList API v2](https://myanimelist.net/apiconfig/references/api/v2) | Official REST API | ~1,100 anime |
+| Cultivation Novels | [NovelUpdates](https://www.novelupdates.com) | Custom web scraper (nodriver + BeautifulSoup) | ~3,800 novels |
+| Isekai / Martial Arts Anime | [MyAnimeList](https://myanimelist.net) | Genre page scraping + MAL API v2 | ~1,100 anime |
 
 ### Fields Collected
 
 **Cultivation Novels:** Title, Type, Language, Year, Status, Chapters, Translated, Publisher, Release Frequency, Authors, Genres, Tags, Rating, Vote Count, Reading List Count, Activity Ranks, Description
 
 **Isekai Anime:** MAL ID, Title (EN/JP), Synonyms, Media Type, Status, Episodes, Start Date, Score, Rank, Popularity, Scoring Users, Members, Source, Rating, Studios, Genres, Themes, Synopsis
+
+---
+
+## 🕷️ Scraper Architecture
+
+### NovelUpdates Scraper (`02_scraper.py`)
+Uses **nodriver** (headless Chrome) to bypass Cloudflare protection on NovelUpdates. Visits each novel page, parses structured HTML fields using BeautifulSoup, and appends rows to a CSV immediately. Features a checkpoint system that logs completed URLs so the scraper can resume from any interruption — essential for a 3,800 novel dataset that takes 3-4 hours to scrape.
+
+### MyAnimeList Scraper (`mal_scraper.py`)
+Uses a two-phase approach necessitated by a MAL API v2 limitation — the API does not support filtering anime by genre/theme ID on its list endpoint:
+
+- **Phase 1** — Scrapes the public MAL genre browse pages (`myanimelist.net/anime/genre/{id}`) for theme IDs 62 (Isekai), 72 (Reincarnation), and 17 (Martial Arts) using urllib + BeautifulSoup, collecting all anime IDs across paginated results. Results are cached to JSON so Phase 1 is skipped on resume.
+- **Phase 2** — Calls the official MAL API v2 `/anime/{id}` endpoint for each collected ID to retrieve clean structured JSON data. Deduplicates anime that appear in multiple themes, storing all matching themes pipe-separated in a single row.
 
 ---
 
@@ -133,12 +147,16 @@ pip install nodriver beautifulsoup4 pandas numpy matplotlib seaborn scikit-learn
 
 ### Steps
 1. **Scrape NovelUpdates** — run `scripts/02_scraper.py` (requires Chrome)
-2. **Build database** — run `scripts/03_build_database.py` with your CSVs in the same folder
-3. **Export Tableau data** — run `scripts/export_tableau_csvs.py`
-4. **Run EDA** — open `notebooks/04_eda_v2.ipynb` in Jupyter
-5. **Run ML** — open `notebooks/05_ml.ipynb` in Jupyter
+2. **Scrape MyAnimeList** — run `scripts/mal_scraper.py` (requires MAL Client ID)
+3. **Build database** — run `scripts/03_build_database.py` with your CSVs in the same folder
+4. **Export Tableau data** — run `scripts/export_tableau_csvs.py`
+5. **Run EDA** — open `notebooks/04_eda_v2.ipynb` in Jupyter
+6. **Run ML** — open `notebooks/05_ml.ipynb` in Jupyter
 
-> **Note:** The MAL scraper requires a free [MyAnimeList API client ID](https://myanimelist.net/apiconfig). The database file and raw CSVs are not included in this repo due to size — run the scrapers to generate them.
+> **Note:** Both scrapers require setup before running:
+> - `02_scraper.py` requires Google Chrome installed and a `urls.txt` file of NovelUpdates URLs
+> - `mal_scraper.py` uses a two-phase approach: Phase 1 scrapes MAL genre pages (IDs 62, 72, 17) to collect anime IDs, Phase 2 calls the official MAL API v2 per ID to retrieve full structured data. Requires a free [MyAnimeList API client ID](https://myanimelist.net/apiconfig).
+> - The database file and raw CSVs are not included in this repo due to size — run the scrapers to generate them.
 
 ---
 
